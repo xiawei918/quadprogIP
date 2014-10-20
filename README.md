@@ -3,4 +3,8 @@ quadbbIP
 
 quadbbIP.m constains the matlab code for solver quadprogIP for Non-Convex quadratic programs
 Stable contains the stable set number test instances
-The more comprehensive test set we tested on can be found here https://github.com/sburer/QuadProgBB
+the instances prepared for the article "Globally Solving Nonconvex
+Quadratic Programming Problems
+via Completely Positive Programming" by Jieqiu Chen and Samuel Burer,
+Math. Prog. Comp. (2012) 4:33–52,
+can be used to test quadbbIP, and are available at https://github.com/sburer/QuadProgBB
