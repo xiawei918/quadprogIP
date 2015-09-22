@@ -1,7 +1,7 @@
 function [x_sol, fval_sol, time_sol, stats]= quadprogIP(H,f,A,b,Aeq,beq,LB,UB,options)
 %% [x_sol,fval_sol,time_sol,stats] = quadprogIP(H,f,A,b,Aeq,beq,LB,UB,options)
 %
-% Authors: Wei Xia, Luis Zuluaga
+% Authors: Wei Xia, Luis Zuluaga, Juan C. Vera
 % quadprogIP is a non-convex quadratic program solver which solves problem with 
 % the following form:
 %
