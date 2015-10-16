@@ -106,6 +106,7 @@ tic;
 % construct default option parameter object
 defaultopt = struct(...
   'max_time'            ,10000,...
+  'fix_var'             ,1e-8 ,...
   'tol'                 ,1e-6 ,...
   'constant'            ,0    ,...
   'Diagnostics'         ,'off',...
@@ -135,6 +136,7 @@ end
 % if H not symmetric
 H = .5*(H + H');
 n = size(f,1);
+old_H = H;
 old_A = A;
 old_Aeq = Aeq;
 
@@ -142,6 +144,9 @@ old_Aeq = Aeq;
 if n ~= n1
   error('Dimensions of H and f are not consistent!');
 end
+
+% Set fixed variable indicator to 0
+fix = 0;
 
 % Assgin default option parameters if none given
 if nargin < 9
@@ -224,81 +229,126 @@ time_prep = toc;
 x_var = size(H,1);
 % Save original bounds for futre transformation
 LB_o = LB;
-UB_o = UB;
+
 
 % Convert problem to standard form
 [LB,UB,time_PB] = prepbound(H,f,A,b,Aeq,beq,LB,UB,options);
 
-[H,f,Aeq,beq,cons,LB,UB,time_refm] = standardform(H,f,A,b,Aeq,beq,LB,UB);
+% Find the indices of fixed variables
+Fx_ind = find(abs(UB-LB)<options.fix_var);
 
-
-
-% Append the box constraints to A
-%A = [A; eye(n_vars); -eye(n_vars)];
-%b = [b; UB; -LB];
-%num_vars = size(H,1);
-
-if issimplex(old_A,old_Aeq,n,LB)
-    BigM = (norm(H,'fro')+norm(f,2))*n_vars*ones(n_vars,1);
-    time_DB = 0;
+% If all variables fixed, return solution
+if length(Fx_ind) == n_vars
+    x_sol = UB;
+    fval_sol = 0.5*UB'*H*UB + f'*UB;
+    time_sol = time_prep+time_PB;
+    stats.total_time = time_sol;
+    display(x_sol);
+    display(fval_sol);
 else
-    % Compute the upper bounds for dual variables
-    if isempty(old_A) & isempty(old_Aeq)
-        [BigM,time_DB] = analytic_dual_bounds(H,f,Aeq,beq,LB,UB,x_var);
-    else
-        [BigM,time_DB] = dualbounds(H,f,Aeq,beq,LB,UB,options);
+    % If some variables are fixed, reduce the problem
+    if ~isempty(Fx_ind) 
+        Fx = zeros(n_vars,1);
+        Fx(Fx_ind) = UB(Fx_ind); 
+        index = true(size(A,2),1);
+        index(Fx_ind) = false;
+        b = b - A(:,~index)*Fx(~index);
+        A = A(:,index);
+        beq = beq - Aeq(:,~index)*Fx(~index);
+        Aeq = Aeq(:,index);
+        temp_H = H(:,index);
+        H_n = temp_H(index,:);
+        index = +index;
+        add_f = H*Fx;
+        f = f + 2*add_f;
+        index = logical(index);
+        f = f(index);
+        constant = sum(sum(H.*(Fx*Fx')));
+        LB = LB(index);
+        UB = UB(index);
+        H = H_n;
+        reduce = size(H,2);
+        fix = 1;
     end
-end
+    
+    
+    [H,f,Aeq,beq,cons,LB,UB,time_refm] = standardform(H,f,A,b,Aeq,beq,LB,UB);
 
-% Prepare the problem formulation for integer program
-[f_IP,A_IP,b_IP,Aeq_IP,beq_IP,LB_IP,UB_IP,ctype_IP,time_PrepIP] = preIP(H,f,Aeq,beq,LB,UB,BigM);
 
-tic;
-lhs = [-inf * ones(size(A_IP,1),1);beq_IP];
-rhs = [b_IP;beq_IP];
 
-p = Cplex();                                                                    
-p.Model.sense = 'minimize';
-p.Model.obj   = f_IP;
-p.Model.lb    = LB_IP;
-p.Model.ub    = UB_IP;
-p.Model.ctype = ctype_IP;
-p.Model.A     = [A_IP;Aeq_IP];
-p.Model.lhs   = lhs;
-p.Model.rhs   = rhs;
+    % Append the box constraints to A
+    %A = [A; eye(n_vars); -eye(n_vars)];
+    %b = [b; UB; -LB];
+    %num_vars = size(H,1);
 
-% Set options
-c_options = set_cplex_options(p, options);
+    if issimplex(old_A,old_Aeq,n,LB)
+        BigM = (norm(H,'fro')+norm(f,2))*n_vars*ones(n_vars,1);
+        time_DB = 0;
+    else
+        % Compute the upper bounds for dual variables
+        if isempty(old_A) & isempty(old_Aeq)
+            [BigM,time_DB] = analytic_dual_bounds(H,f,Aeq,beq,LB,UB,x_var);
+        else
+            [BigM,time_DB] = dualbounds(H,f,Aeq,beq,LB,UB,options);
+        end
+    end
 
-p.solve;
-b = toc;
+    % Prepare the problem formulation for integer program
+    [f_IP,A_IP,b_IP,Aeq_IP,beq_IP,LB_IP,UB_IP,ctype_IP,time_PrepIP] = preIP(H,f,Aeq,beq,LB,UB,BigM);
 
-% Record calculation time
-time_IP = b;
+    tic;
+    lhs = [-inf * ones(size(A_IP,1),1);beq_IP];
+    rhs = [b_IP;beq_IP];
 
-% Record integer branch and bound time
-tic;
-x = p.Solution.x;
-fval = p.Solution.objval;
-% Scale the solution to get the solution of original problem
-x_sol = x(1:n_vars)+LB_o;
-fval_sol = (1/2)*(fval)+cons;
+    p = Cplex();                                                                    
+    p.Model.sense = 'minimize';
+    p.Model.obj   = f_IP;
+    p.Model.lb    = LB_IP;
+    p.Model.ub    = UB_IP;
+    p.Model.ctype = ctype_IP;
+    p.Model.A     = [A_IP;Aeq_IP];
+    p.Model.lhs   = lhs;
+    p.Model.rhs   = rhs;
 
-%fval_sol = 0.5*x_sol'*old_H*x_sol + old_f'*x_sol;
-% Finish recording the of post calculation time
-time_post = toc;
+    % Set options
+    c_options = set_cplex_options(p, options);
 
-% Calculate the time for preprocessing and solving integer program
-time_Pre = time_refm+time_PB+time_DB+time_prep;
-time_sol = time_PrepIP+time_IP+time_post;
+    p.solve;
+    b = toc;
 
-stats.time_Pre = time_Pre;
-stats.time_IP = time_sol;
-stats.total_time = time_Pre+time_sol;
+    % Record calculation time
+    time_IP = b;
 
-% Update problem status
-if time_sol > options.max_time
-    stats.status = 'time_limit';
+    % Record integer branch and bound time
+    tic;
+    x = p.Solution.x;
+    fval = p.Solution.objval;
+    % Scale the solution to get the solution of original problem
+    x_sol = x(1:n_vars)+LB_o;
+    fval_sol = (1/2)*(fval)+cons;
+
+    if fix == 1
+        fval_sol = fval_sol + constant;
+        Fx(index) = x_sol;
+        x_sol = Fx;
+    end
+    
+    %fval_sol = 0.5*x_sol'*old_H*x_sol + old_f'*x_sol;
+    % Finish recording the of post calculation time
+    time_post = toc;
+
+    % Calculate the time for preprocessing and solving integer program
+    time_Pre = time_refm+time_PB+time_DB+time_prep;
+    time_sol = time_PrepIP+time_IP+time_post;
+
+    stats.time_Pre = time_Pre;
+    stats.time_IP = time_sol;
+    stats.total_time = time_Pre+time_sol;
+
+    % Update problem status
+    if time_sol > options.max_time
+        stats.status = 'time_limit';
+    end
 end
 end
 
