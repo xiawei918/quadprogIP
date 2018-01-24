@@ -4,8 +4,9 @@ quadprogIP is a global solver for quadratic optimization problems written in Mat
 
 ## Repository contents
 
-* quadbbIP.m constains the matlab code for solver quadprogIP for Non-Convex quadratic programs
+* quadbbIP.m contains the matlab code for solver quadprogIP for Non-Convex quadratic programs
 * Stable contains the stable set number test instances
+* raw_data.pdf contains a summary table of the runtime of each solver for each individual instances
 
 The instances are prepared for the article *Globally Solving Nonconvex
 Quadratic Programming Problems
