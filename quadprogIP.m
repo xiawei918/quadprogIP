@@ -311,15 +311,15 @@ function [x_sol, fval_sol, time_sol, stats]= quadprogIP(H,f,A,b,Aeq,beq,LB,UB,op
         tic;
         % Scale the solution to get the solution of original problem
 	    if ~isempty(x)
-            x_sol = x(1:n_vars)+LB_o;
-            fval_sol = (1/2)*(fval)+cons;
-        end
+	        x_sol = (UB_o - LB_o).*x(1:n_vars)+LB_o;
+	        fval_sol = (1/2)*(fval)+cons;
+            end
 	
-        if fix == 1
-            fval_sol = fval_sol + constant;
-            Fx(index) = x_sol;
-            x_sol = Fx;
-        end
+            if fix == 1
+                fval_sol = fval_sol + constant;
+                Fx(index) = x_sol;
+                x_sol = Fx;
+            end
 
         % Finish recording the of post calculation time
         time_post = toc;
@@ -372,7 +372,7 @@ end
             H_h = (U*U').*H;
             if ~isempty(f)
                 f_h = U.*(f+H*LB);
-                cons = LB'*H*LB + f'*LB;
+                cons = 0.5*LB'*H*LB + f'*LB;
             end
             if ~isempty(A)
                 A_h = zeros(size(A));
